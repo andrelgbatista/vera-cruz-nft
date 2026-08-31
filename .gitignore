@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+coverage/
+coverage.json
+cache/
+artifacts/
+typechain/
+typechain-types/
+.vscode/
+.DS_Store
+npm-debug.log*

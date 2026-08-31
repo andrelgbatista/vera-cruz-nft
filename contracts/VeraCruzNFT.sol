@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -57,6 +58,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     mapping(address => uint256[]) public ownerWatches;
     mapping(DialColor => uint256[]) public watchesByDialColor;
     mapping(uint256 => WarrantyState) public warrantyStates;
+    string private _baseTokenURI;
     
     // Events
     event WatchMinted(uint256 indexed tokenId, address indexed to, string serialNumber, DialColor dialColor, uint256 edition);
@@ -65,7 +67,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     event WarrantyStarted(uint256 indexed tokenId, address indexed owner, bool extendedWarranty, uint256 startTime);
     event WarrantyExpired(uint256 indexed tokenId, address indexed formerOwner);
     
-    constructor() ERC721("Vera Cruz Alvorada", "VCRZ-ALV") Ownable(msg.sender) {}
+    constructor() ERC721("Vera Cruz Alvorada", "VCRZ-ALV") Ownable() {}
     
     modifier onlyOwnerOrSelf(uint256 tokenId) {
         require(msg.sender == ownerOf(tokenId) || msg.sender == owner(), "Not owner or contract owner");
@@ -138,8 +140,8 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     
     function warrantyExpiry(uint256 tokenId) public view returns (uint256) {
         require(watchData[tokenId].warrantyActive, "Warranty data not found");
-        uint256 years = watchData[tokenId].extendedWarranty ? EXTENDED_WARRANTY_YEARS : STANDARD_WARRANTY_YEARS;
-        return watchData[tokenId].warrantyStart + years * 365 days;
+        uint256 warrantyYears = watchData[tokenId].extendedWarranty ? EXTENDED_WARRANTY_YEARS : STANDARD_WARRANTY_YEARS;
+        return watchData[tokenId].warrantyStart + (warrantyYears * 365 days);
     }
     
     function setOwnerNickname(string memory nickname) public {
@@ -148,13 +150,15 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         string memory oldNickname = profile.nickname;
         profile.nickname = nickname;
         profile.nicknameUpdatedAt = block.timestamp;
-        
-        // Update nickname for all owned tokens
+
         uint256[] memory tokens = ownerWatches[msg.sender];
-        for(uint256 i = 0; i < tokens.length; i++) {
+        for (uint256 i = 0; i < tokens.length; i++) {
             uint256 tokenId = tokens[i];
-            TransferRecord memory lastTransfer = ownershipHistory[tokenId][ownershipHistory[tokenId].length - 1];
-            lastTransfer.toNickname = nickname;
+            uint256 historyLength = ownershipHistory[tokenId].length;
+            if (historyLength == 0) {
+                continue;
+            }
+            ownershipHistory[tokenId][historyLength - 1].toNickname = nickname;
             emit OwnerNicknameUpdated(tokenId, msg.sender, oldNickname, nickname);
         }
     }
@@ -163,32 +167,31 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         address from,
         address to,
         uint256 tokenId
-    ) public override whenNotPaused {
+    ) public override(ERC721, IERC721) whenNotPaused {
         super.transferFrom(from, to, tokenId);
-        
-        // Record transfer
-        TransferRecord memory transfer = TransferRecord({
-            from: from,
-            to: to,
-            timestamp: block.timestamp,
-            fromNickname: ownerProfiles[from].nickname,
-            toNickname: ownerProfiles[to].nickname,
-            warrantyTransferred: true
-        });
-        
-        ownershipHistory[tokenId].push(transfer);
-        
-        emit OwnershipTransferred(tokenId, from, to, ownerProfiles[from].nickname, ownerProfiles[to].nickname, block.timestamp);
+        _recordTransfer(from, to, tokenId);
     }
-    
+
     function safeTransferFrom(
         address from,
         address to,
         uint256 tokenId
-    ) public override whenNotPaused {
+    ) public override(ERC721, IERC721) whenNotPaused {
         super.safeTransferFrom(from, to, tokenId);
-        
-        // Record transfer
+        _recordTransfer(from, to, tokenId);
+    }
+
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes memory data
+    ) public override(ERC721, IERC721) whenNotPaused {
+        super.safeTransferFrom(from, to, tokenId, data);
+        _recordTransfer(from, to, tokenId);
+    }
+
+    function _recordTransfer(address from, address to, uint256 tokenId) internal {
         TransferRecord memory transfer = TransferRecord({
             from: from,
             to: to,
@@ -197,9 +200,9 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
             toNickname: ownerProfiles[to].nickname,
             warrantyTransferred: true
         });
-        
+
         ownershipHistory[tokenId].push(transfer);
-        
+
         emit OwnershipTransferred(tokenId, from, to, ownerProfiles[from].nickname, ownerProfiles[to].nickname, block.timestamp);
     }
     
@@ -236,7 +239,11 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     }
     
     function setBaseURI(string memory newBaseURI) public onlyOwner {
-        _setBaseURI(newBaseURI);
+        _baseTokenURI = newBaseURI;
+    }
+
+    function _baseURI() internal view virtual override returns (string memory) {
+        return _baseTokenURI;
     }
     
     function _beforeTokenTransfer(
@@ -245,7 +252,6 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         uint256 tokenId,
         uint256 batchSize
     ) internal override whenNotPaused {
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
         
         // Update ownerWatches mapping
         if (from != address(0)) {

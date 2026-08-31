@@ -20,14 +20,14 @@ describe("VeraCruzNFT", function () {
       await veraCruzNFT.mintBatch(
         buyer.address,
         "VR-AL-AA-01001",
-        veraCruzNFT.DialColor.AuroraBlue,
+        1,
         1
       );
       
       expect(await veraCruzNFT.totalSupply()).to.equal(1);
       const watchData = await veraCruzNFT.getWatchData(1);
       expect(watchData.serialNumber).to.equal("VR-AL-AA-01001");
-      expect(watchData.dialColor).to.equal(veraCruzNFT.DialColor.AuroraBlue);
+      expect(watchData.dialColor).to.equal(1);
       expect(watchData.edition).to.equal(1);
     });
 
@@ -36,7 +36,7 @@ describe("VeraCruzNFT", function () {
         await veraCruzNFT.mintBatch(
           buyer.address,
           `VR-AL-AA-01${i.toString().padStart(3, '0')}`,
-          veraCruzNFT.DialColor.Black,
+          0,
           i
         );
       }
@@ -44,12 +44,24 @@ describe("VeraCruzNFT", function () {
     });
 
     it("Should not mint beyond max supply", async function () {
-      await veraCruzNFT.mintBatch(
-        buyer.address,
-        "VR-AL-AA-01001",
-        veraCruzNFT.DialColor.Black,
-        51
-      );
+      for (let i = 1; i <= 50; i++) {
+        await veraCruzNFT.mintBatch(
+          buyer.address,
+          `VR-AL-AA-${String(i).padStart(5, '0')}`,
+          0,
+          i
+        );
+      }
+
+      await expect(
+        veraCruzNFT.mintBatch(
+          buyer.address,
+          "VR-AL-AA-00051",
+          0,
+          51
+        )
+      ).to.be.revertedWith("Max supply reached");
+
       expect(await veraCruzNFT.totalSupply()).to.equal(50);
     });
   });
@@ -59,7 +71,7 @@ describe("VeraCruzNFT", function () {
       await veraCruzNFT.mintBatch(
         buyer.address,
         "VR-AL-AA-01001",
-        veraCruzNFT.DialColor.AuroraBlue,
+        1,
         1
       );
     });
@@ -91,39 +103,36 @@ describe("VeraCruzNFT", function () {
       await veraCruzNFT.mintBatch(
         buyer.address,
         "VR-AL-AA-01001",
-        veraCruzNFT.DialColor.AuroraBlue,
+        1,
         1
       );
     });
 
     it("Should set owner nickname", async function () {
-      await veraCruzNFT.setOwnerNickname("RelogioLover");
+      await veraCruzNFT.connect(buyer).setOwnerNickname("RelogioLover");
       const nickname = await veraCruzNFT.getOwnerNickname(buyer.address);
       expect(nickname).to.equal("RelogioLover");
     });
 
     it("Should transfer NFT and record history", async function () {
-      await veraCruzNFT.transferFrom(buyer.address, alias1, 1);
-      
+      await veraCruzNFT.connect(buyer).transferFrom(buyer.address, alias1.address, 1);
+
       const history = await veraCruzNFT.getOwnershipHistory(1);
       expect(history.length).to.equal(1);
       expect(history[0].from).to.equal(buyer.address);
-      expect(history[0].to).to.equal(alias1);
+      expect(history[0].to).to.equal(alias1.address);
       expect(history[0].warrantyTransferred).to.be.true;
     });
 
-    it("Should update nickname for all owned tokens", async function () {
-      await veraCruzNFT.setOwnerNickname("RelogioLover");
-      
-      // Transfer to another address
-      await veraCruzNFT.transferFrom(buyer.address, alias1, 1);
-      
-      // Update nickname again
-      await veraCruzNFT.setOwnerNickname("NovoApelido");
-      
-      // Check that the alias was updated
+    it("Should update nickname for the current owner in the transfer history", async function () {
+      await veraCruzNFT.connect(buyer).setOwnerNickname("RelogioLover");
+      await veraCruzNFT.connect(buyer).transferFrom(buyer.address, alias1.address, 1);
+
+      await veraCruzNFT.connect(alias1).setOwnerNickname("NovoApelido");
+
       const history = await veraCruzNFT.getOwnershipHistory(1);
       expect(history[0].toNickname).to.equal("NovoApelido");
+      expect(await veraCruzNFT.getOwnerNickname(alias1.address)).to.equal("NovoApelido");
     });
   });
 });

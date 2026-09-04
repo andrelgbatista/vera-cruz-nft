@@ -2,28 +2,22 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
-contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
-    
-    enum DialColor { Black, AuroraBlue }
+contract VeraCruzNFT is ERC721, Ownable, Pausable, ReentrancyGuard {
+    using Strings for uint256;
     enum WarrantyState { None, ActiveStandard, ActiveExtended, Expired }
     
     struct WatchData {
         string model;
-        string brand;
-        string caseMaterial;
-        string caseDiameter;
-        string crystalType;
-        string movementType;
-        string caliber;
-        string strap;
-        string waterResistance;
-        DialColor dialColor;
+        string modelCode;
+        string dialColor;
         string serialNumber;
+        string sku;
+        uint256 batchNumber;
         uint256 edition;
         uint256 mintedAt;
         bool warrantyActive;
@@ -48,7 +42,6 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     
     // State
     uint256 private _nextTokenId = 1;
-    uint256 public constant MAX_SUPPLY = 50;
     uint256 public constant STANDARD_WARRANTY_YEARS = 1;
     uint256 public constant EXTENDED_WARRANTY_YEARS = 2;
     
@@ -56,18 +49,22 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     mapping(uint256 => TransferRecord[]) public ownershipHistory;
     mapping(address => OwnerProfile) public ownerProfiles;
     mapping(address => uint256[]) public ownerWatches;
-    mapping(DialColor => uint256[]) public watchesByDialColor;
+    mapping(string => uint256[]) private watchesByDialColor;
+    mapping(uint256 => string) private tokenMetadataURI;
     mapping(uint256 => WarrantyState) public warrantyStates;
     string private _baseTokenURI;
     
     // Events
-    event WatchMinted(uint256 indexed tokenId, address indexed to, string serialNumber, DialColor dialColor, uint256 edition);
+    event WatchMinted(uint256 indexed tokenId, address indexed to, string sku, string modelCode, string dialColor, uint256 batchNumber, uint256 edition);
+    event WatchSold(uint256 indexed tokenId, address indexed from, address indexed to, bool extendedWarranty);
     event OwnershipTransferred(uint256 indexed tokenId, address indexed from, address indexed to, string fromNickname, string toNickname, uint256 timestamp);
     event OwnerNicknameUpdated(uint256 indexed tokenId, address indexed owner, string oldNickname, string newNickname);
     event WarrantyStarted(uint256 indexed tokenId, address indexed owner, bool extendedWarranty, uint256 startTime);
     event WarrantyExpired(uint256 indexed tokenId, address indexed formerOwner);
     
-    constructor() ERC721("Vera Cruz Alvorada", "VCRZ-ALV") Ownable() {}
+    constructor() ERC721("Vera Cruz Alvorada", "VCRZ-ALV") Ownable() {
+        _baseTokenURI = "ipfs://bafybeibuiuivphrxhhye3ohgjdyqh54fyapftys73pknnd3fskk7usirfu/";
+    }
     
     modifier onlyOwnerOrSelf(uint256 tokenId) {
         require(msg.sender == ownerOf(tokenId) || msg.sender == owner(), "Not owner or contract owner");
@@ -77,28 +74,76 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     function mintBatch(
         address to,
         string memory serialNumber,
-        DialColor dialColor,
+        uint256 dialColor,
         uint256 edition
     ) public onlyOwner whenNotPaused nonReentrant {
-        require(_nextTokenId <= MAX_SUPPLY, "Max supply reached");
+        _mintWatch(to, "VR-AL", "Alvorada", "AL", dialColor == 1 ? "AA" : "PR", 1, edition, serialNumber, "");
+    }
+
+    function mintWatch(
+        address to,
+        string memory sku,
+        string memory model,
+        string memory modelCode,
+        string memory dialColor,
+        uint256 batchNumber,
+        uint256 edition,
+        string memory serialNumber,
+        string memory metadataURI
+    ) public onlyOwner whenNotPaused nonReentrant {
+        _mintWatch(to, sku, model, modelCode, dialColor, batchNumber, edition, serialNumber, metadataURI);
+    }
+
+    function mintBatch(
+        address[] memory recipients,
+        string[] memory skus,
+        string[] memory models,
+        string[] memory modelCodes,
+        string[] memory dialColors,
+        uint256[] memory batchNumbers,
+        uint256[] memory editions,
+        string[] memory serialNumbers,
+        string[] memory metadataURIs
+    ) public onlyOwner whenNotPaused nonReentrant {
+        uint256 count = recipients.length;
+        require(count > 0, "Empty batch");
+        require(
+            skus.length == count && models.length == count && modelCodes.length == count && dialColors.length == count &&
+            batchNumbers.length == count && editions.length == count && serialNumbers.length == count &&
+            metadataURIs.length == count,
+            "Array length mismatch"
+        );
+
+        for (uint256 i = 0; i < count; i++) {
+            _mintWatch(recipients[i], skus[i], models[i], modelCodes[i], dialColors[i], batchNumbers[i], editions[i], serialNumbers[i], metadataURIs[i]);
+        }
+    }
+
+    function _mintWatch(
+        address to,
+        string memory sku,
+        string memory model,
+        string memory modelCode,
+        string memory dialColor,
+        uint256 batchNumber,
+        uint256 edition,
+        string memory serialNumber,
+        string memory metadataURI
+    ) internal {
         require(to != address(0), "Invalid recipient");
         require(bytes(serialNumber).length > 0, "Serial number required");
+        require(bytes(sku).length > 0, "SKU required");
         
         uint256 tokenId = _nextTokenId;
         _nextTokenId++;
         
         WatchData memory data = WatchData({
-            model: "Alvorada",
-            brand: "Vera Cruz",
-            caseMaterial: "316L Stainless Steel",
-            caseDiameter: "40mm",
-            crystalType: "Sapphire Crystal",
-            movementType: "Quartz",
-            caliber: "Miyota 2115",
-            strap: "Solid Stainless Steel President Style",
-            waterResistance: "5 ATM",
+            model: model,
+            modelCode: modelCode,
             dialColor: dialColor,
             serialNumber: serialNumber,
+            sku: sku,
+            batchNumber: batchNumber,
             edition: edition,
             mintedAt: block.timestamp,
             warrantyActive: false,
@@ -110,12 +155,28 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         watchesByDialColor[dialColor].push(tokenId);
         
         _safeMint(to, tokenId);
+        if (bytes(metadataURI).length > 0) {
+            tokenMetadataURI[tokenId] = metadataURI;
+        }
         
-        emit WatchMinted(tokenId, to, serialNumber, dialColor, edition);
+        emit WatchMinted(tokenId, to, sku, modelCode, dialColor, batchNumber, edition);
     }
     
     function startWarranty(uint256 tokenId, bool extended) public onlyOwner whenNotPaused {
-        require(watchData[tokenId].warrantyActive == false, "Warranty already active");
+        _startWarranty(tokenId, extended);
+    }
+
+    function sellWatch(address buyer, uint256 tokenId, bool extended) public onlyOwner whenNotPaused nonReentrant {
+        require(ownerOf(tokenId) == owner(), "Watch is not in treasury");
+        address treasury = owner();
+        _transfer(treasury, buyer, tokenId);
+        _recordTransfer(treasury, buyer, tokenId);
+        _startWarranty(tokenId, extended);
+        emit WatchSold(tokenId, treasury, buyer, extended);
+    }
+
+    function _startWarranty(uint256 tokenId, bool extended) internal {
+        require(!watchData[tokenId].warrantyActive, "Warranty already active");
         require(tokenId > 0 && tokenId <= totalSupply(), "Invalid token");
         
         uint256 startTime = block.timestamp;
@@ -145,13 +206,22 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     }
     
     function setOwnerNickname(string memory nickname) public {
+        _setOwnerNickname(msg.sender, nickname);
+    }
+
+    function setOwnerNicknameFor(address account, string memory nickname) public onlyOwner {
+        require(account != address(0), "Invalid account");
+        _setOwnerNickname(account, nickname);
+    }
+
+    function _setOwnerNickname(address account, string memory nickname) internal {
         require(bytes(nickname).length > 0 && bytes(nickname).length <= 50, "Invalid nickname length");
-        OwnerProfile storage profile = ownerProfiles[msg.sender];
+        OwnerProfile storage profile = ownerProfiles[account];
         string memory oldNickname = profile.nickname;
         profile.nickname = nickname;
         profile.nicknameUpdatedAt = block.timestamp;
 
-        uint256[] memory tokens = ownerWatches[msg.sender];
+        uint256[] memory tokens = ownerWatches[account];
         for (uint256 i = 0; i < tokens.length; i++) {
             uint256 tokenId = tokens[i];
             uint256 historyLength = ownershipHistory[tokenId].length;
@@ -159,7 +229,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
                 continue;
             }
             ownershipHistory[tokenId][historyLength - 1].toNickname = nickname;
-            emit OwnerNicknameUpdated(tokenId, msg.sender, oldNickname, nickname);
+            emit OwnerNicknameUpdated(tokenId, account, oldNickname, nickname);
         }
     }
     
@@ -167,7 +237,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         address from,
         address to,
         uint256 tokenId
-    ) public override(ERC721, IERC721) whenNotPaused {
+    ) public override(ERC721) whenNotPaused {
         super.transferFrom(from, to, tokenId);
         _recordTransfer(from, to, tokenId);
     }
@@ -176,7 +246,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         address from,
         address to,
         uint256 tokenId
-    ) public override(ERC721, IERC721) whenNotPaused {
+    ) public override(ERC721) whenNotPaused {
         super.safeTransferFrom(from, to, tokenId);
         _recordTransfer(from, to, tokenId);
     }
@@ -186,7 +256,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         address to,
         uint256 tokenId,
         bytes memory data
-    ) public override(ERC721, IERC721) whenNotPaused {
+    ) public override(ERC721) whenNotPaused {
         super.safeTransferFrom(from, to, tokenId, data);
         _recordTransfer(from, to, tokenId);
     }
@@ -209,6 +279,27 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
     function getWatchData(uint256 tokenId) public view returns (WatchData memory) {
         return watchData[tokenId];
     }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721)
+        returns (string memory)
+    {
+        require(_exists(tokenId), "ERC721: invalid token ID");
+
+        if (bytes(tokenMetadataURI[tokenId]).length > 0) {
+            return tokenMetadataURI[tokenId];
+        }
+
+        uint256 edition = tokenId <= 25 ? tokenId : tokenId - 25;
+        string memory folder = tokenId <= 25 ? "vc_al_aa/aa" : "vc_al_pr/pr";
+        string memory editionNumber = edition < 10
+            ? string.concat("0", edition.toString())
+            : edition.toString();
+
+        return string.concat(_baseURI(), folder, editionNumber, ".json");
+    }
     
     function getOwnershipHistory(uint256 tokenId) public view returns (TransferRecord[] memory) {
         return ownershipHistory[tokenId];
@@ -226,8 +317,8 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         return _nextTokenId - 1;
     }
     
-    function getWatchesByDialColor(DialColor color) public view returns (uint256[] memory) {
-        return watchesByDialColor[color];
+    function getWatchesByDialColor(uint256 color) public view returns (uint256[] memory) {
+        return watchesByDialColor[color == 1 ? "AA" : "PR"];
     }
     
     function pause() public onlyOwner {
@@ -250,7 +341,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
         address from,
         address to,
         uint256 tokenId,
-        uint256 batchSize
+        uint256
     ) internal override whenNotPaused {
         
         // Update ownerWatches mapping

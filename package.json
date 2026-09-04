@@ -4,7 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test"
+    "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
+    "slither": "py -m slither . --filter-paths \"node_modules|artifacts|cache\"",
+    "deploy:amoy": "npx hardhat run scripts/deploy.js --network amoy",
+    "deploy:polygon": "npx hardhat run scripts/deploy.js --network polygon",
+    "sell:amoy": "node scripts/sell.js --network amoy",
+    "sell:polygon": "node scripts/sell.js --network polygon",
+    "status:amoy": "node scripts/status.js --network amoy",
+    "status:polygon": "node scripts/status.js --network polygon"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +20,7 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.2",
     "@openzeppelin/contracts": "^4.9.6",
+    "dotenv": "^16.4.7",
     "hardhat": "^2.29.1"
   }
 }

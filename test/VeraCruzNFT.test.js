@@ -27,8 +27,47 @@ describe("VeraCruzNFT", function () {
       expect(await veraCruzNFT.totalSupply()).to.equal(1);
       const watchData = await veraCruzNFT.getWatchData(1);
       expect(watchData.serialNumber).to.equal("VR-AL-AA-01001");
-      expect(watchData.dialColor).to.equal(1);
+      expect(watchData.dialColor).to.equal("AA");
       expect(watchData.edition).to.equal(1);
+    });
+
+    it("Should mint a batch with individual metadata URIs", async function () {
+      await veraCruzNFT["mintBatch(address[],string[],string[],string[],string[],uint256[],uint256[],string[],string[])"](
+        [buyer.address, buyer.address],
+        ["VR-AL-AA-01001", "VR-AL-AA-01002"],
+        ["Alvorada", "Alvorada"],
+        ["AL", "AL"],
+        ["AA", "AA"],
+        [1, 1],
+        [1, 2],
+        ["VR-AL-AA-01001", "VR-AL-AA-01002"],
+        ["ipfs://metadata/aa01.json", "ipfs://metadata/aa02.json"]
+      );
+
+      expect(await veraCruzNFT.totalSupply()).to.equal(2);
+      expect(await veraCruzNFT.tokenURI(2)).to.equal("ipfs://metadata/aa02.json");
+    });
+
+    it("Should map token IDs to Pinata metadata paths", async function () {
+      for (let edition = 1; edition <= 25; edition++) {
+        await veraCruzNFT.mintBatch(
+          buyer.address,
+          `VR-AL-AA-01${String(edition).padStart(3, "0")}`,
+          1,
+          edition
+        );
+      }
+      await veraCruzNFT.mintBatch(buyer.address, "VR-AL-PR-01001", 0, 1);
+
+      expect(await veraCruzNFT.tokenURI(1)).to.equal(
+        "ipfs://bafybeibuiuivphrxhhye3ohgjdyqh54fyapftys73pknnd3fskk7usirfu/vc_al_aa/aa01.json"
+      );
+      expect(await veraCruzNFT.tokenURI(25)).to.equal(
+        "ipfs://bafybeibuiuivphrxhhye3ohgjdyqh54fyapftys73pknnd3fskk7usirfu/vc_al_aa/aa25.json"
+      );
+      expect(await veraCruzNFT.tokenURI(26)).to.equal(
+        "ipfs://bafybeibuiuivphrxhhye3ohgjdyqh54fyapftys73pknnd3fskk7usirfu/vc_al_pr/pr01.json"
+      );
     });
 
     it("Should mint all 50 NFTs", async function () {
@@ -43,33 +82,24 @@ describe("VeraCruzNFT", function () {
       expect(await veraCruzNFT.totalSupply()).to.equal(50);
     });
 
-    it("Should not mint beyond max supply", async function () {
-      for (let i = 1; i <= 50; i++) {
+    it("Should allow future collections beyond the first 50 NFTs", async function () {
+      for (let i = 1; i <= 51; i++) {
         await veraCruzNFT.mintBatch(
           buyer.address,
-          `VR-AL-AA-${String(i).padStart(5, '0')}`,
-          0,
+          `VR-AL-AA-01${String(i).padStart(3, "0")}`,
+          1,
           i
         );
       }
 
-      await expect(
-        veraCruzNFT.mintBatch(
-          buyer.address,
-          "VR-AL-AA-00051",
-          0,
-          51
-        )
-      ).to.be.revertedWith("Max supply reached");
-
-      expect(await veraCruzNFT.totalSupply()).to.equal(50);
+      expect(await veraCruzNFT.totalSupply()).to.equal(51);
     });
   });
 
   describe("Warranty", function () {
     beforeEach(async function () {
       await veraCruzNFT.mintBatch(
-        buyer.address,
+        admin.address,
         "VR-AL-AA-01001",
         1,
         1
@@ -95,6 +125,14 @@ describe("VeraCruzNFT", function () {
       await veraCruzNFT.startWarranty(1, false);
       const expiry = await veraCruzNFT.warrantyExpiry(1);
       expect(expiry).to.be.gt(0);
+    });
+
+    it("Should sell a treasury watch and activate its warranty", async function () {
+      await veraCruzNFT.connect(admin).sellWatch(buyer.address, 1, false);
+
+      expect(await veraCruzNFT.ownerOf(1)).to.equal(buyer.address);
+      expect(await veraCruzNFT.isUnderWarranty(1)).to.be.true;
+      expect((await veraCruzNFT.getOwnershipHistory(1)).length).to.equal(1);
     });
   });
 
@@ -133,6 +171,74 @@ describe("VeraCruzNFT", function () {
       const history = await veraCruzNFT.getOwnershipHistory(1);
       expect(history[0].toNickname).to.equal("NovoApelido");
       expect(await veraCruzNFT.getOwnerNickname(alias1.address)).to.equal("NovoApelido");
+    });
+  });
+
+  describe("Access control", function () {
+    beforeEach(async function () {
+      await veraCruzNFT.mintBatch(
+        admin.address,
+        "VR-AL-AA-01001",
+        1,
+        1
+      );
+    });
+
+    it("Should restrict minting and warranty changes to the contract owner", async function () {
+      await expect(
+        veraCruzNFT.connect(buyer).mintBatch(
+          buyer.address,
+          "VR-AL-AA-01002",
+          1,
+          2
+        )
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+
+      await expect(
+        veraCruzNFT.connect(buyer).startWarranty(1, true)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+
+      await expect(
+        veraCruzNFT.connect(buyer).sellWatch(buyer.address, 1, false)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("Should restrict administrative configuration to the contract owner", async function () {
+      await expect(veraCruzNFT.connect(buyer).pause()).to.be.revertedWith(
+        "Ownable: caller is not the owner"
+      );
+      await expect(veraCruzNFT.connect(buyer).unpause()).to.be.revertedWith(
+        "Ownable: caller is not the owner"
+      );
+      await expect(
+        veraCruzNFT.connect(buyer).setBaseURI("ipfs://attacker/")
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+      await expect(
+        veraCruzNFT.connect(buyer).transferOwnership(alias1.address)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+      await expect(veraCruzNFT.connect(buyer).renounceOwnership()).to.be.revertedWith(
+        "Ownable: caller is not the owner"
+      );
+    });
+
+    it("Should allow only the NFT owner to transfer it", async function () {
+      await expect(
+        veraCruzNFT.connect(buyer).transferFrom(admin.address, alias1.address, 1)
+      ).to.be.revertedWith("ERC721: caller is not token owner or approved");
+
+      await veraCruzNFT
+        .connect(admin)
+        .transferFrom(admin.address, alias1.address, 1);
+      expect(await veraCruzNFT.ownerOf(1)).to.equal(alias1.address);
+    });
+
+    it("Should allow the contract owner to register a buyer nickname", async function () {
+      await veraCruzNFT.setOwnerNicknameFor(buyer.address, "Rafa");
+      expect(await veraCruzNFT.getOwnerNickname(buyer.address)).to.equal("Rafa");
+
+      await expect(
+        veraCruzNFT.connect(buyer).setOwnerNicknameFor(alias1.address, "Unauthorized")
+      ).to.be.revertedWith("Ownable: caller is not the owner");
     });
   });
 });

@@ -11,23 +11,20 @@ NFT smart contract for the watch brand **Vera Cruz**, model **Alvorada**. Each w
 
 ## 1. Product Specifications (On-Chain)
 
-### Fixed Watch Data (Minted at creation)
+### Watch Identity and Warranty Data (Minted at creation)
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `model` | string | Watch model | "Alvorada" |
-| `brand` | string | Watch brand | "Vera Cruz" |
-| `caseMaterial` | string | Case material | "316L Stainless Steel" |
-| `caseDiameter` | string | Case diameter | "40mm" |
-| `crystalType` | string | Crystal type | "Sapphire Crystal" |
-| `movementType` | string | Movement type | "Quartz" |
-| `caliber` | string | Caliber | "Miyota 2115" |
-| `strap` | string | Strap type | "Solid Stainless Steel President Style" |
-| `waterResistance` | string | Water resistance | "5 ATM" |
-| `dialColor` | enum (DialColor) | Dial color | `Black` (0) or `AuroraBlue` (1) |
+| `model` | string | Watch model name | "Alvorada" |
+| `modelCode` | string | SKU model code | "AL" |
+| `dialColor` | string | Flexible dial color code | "AA", "PR", "VM" |
 | `serialNumber` | string | Unique serial number | "VR-AL-AA-01001" |
-| `edition` | uint256 | Position in the batch | 1 (1-25) or 1 (1-25) |
+| `sku` | string | Full commercial product identifier | "VR-AL-AA-01001" |
+| `batchNumber` | uint256 | Production batch | 1 |
+| `edition` | uint256 | Piece number within model/color/batch | 1-25 |
 | `mintedAt` | uint256 | Minting timestamp | Auto (block timestamp) |
+
+The detailed product specification is stored in the token's IPFS metadata. This keeps the contract extensible and below the EVM bytecode limit while preserving the product identity on-chain.
 
 ### Serial Number Format
 
@@ -55,29 +52,38 @@ Brand code:    VR = Vera Cruz
 ## 2. NFT Structure
 
 ### 2.1 Standard
-- **ERC-721** (NFT standard) - **CONFIRMED** (each watch has unique serial number on-chain)
-- Extensions: `Ownable`, `ERC721URIStorage`, `ReentrancyGuard`
+- **ERC-721** (each watch has a unique global `tokenId`)
+- Extensions: `Ownable`, `Pausable`, `ReentrancyGuard`
+- Individual metadata URI stored on-chain per token
 
 ### 2.2 Metadata (Off-Chain via IPFS)
 
 ```json
 {
-  "name": "Vera Cruz Alvorada #1/50",
+    "name": "Vera Cruz Alvorada Azul Aurora #1/25",
   "description": "Vera Cruz Alvorada watch - Aurora Blue dial, 40mm, 316L Stainless Steel, Sapphire Crystal, Miyota 2115 Quartz movement. Serial: VR-AL-AA-01001",
   "image": "ipfs://...",
-  "external_url": "https://veracruzwatches.com/alvorada/1",
+    "external_url": "https://relogiosveracruz.com.br/alvorada/1",
   "attributes": [
     {"trait_type": "Model", "value": "Alvorada"},
     {"trait_type": "Brand", "value": "Vera Cruz"},
     {"trait_type": "Case Material", "value": "316L Stainless Steel"},
+    {"trait_type": "Case Color", "value": "Prata"},
     {"trait_type": "Case Diameter", "value": "40mm"},
     {"trait_type": "Crystal", "value": "Sapphire Crystal"},
+    {"trait_type": "Bezel", "value": "Sem bezel"},
+    {"trait_type": "Watch Style", "value": "Tres ponteiros com data"},
     {"trait_type": "Movement", "value": "Quartz"},
     {"trait_type": "Caliber", "value": "Miyota 2115"},
     {"trait_type": "Strap", "value": "Solid Stainless Steel President Style"},
+    {"trait_type": "Strap Color", "value": "Prata"},
+    {"trait_type": "Strap Material", "value": "Aco"},
+    {"trait_type": "Strap Type", "value": "President"},
+    {"trait_type": "Clasp", "value": "Borboleta"},
     {"trait_type": "Water Resistance", "value": "5 ATM"},
-    {"trait_type": "Dial Color", "value": "Aurora Blue"},
-    {"trait_type": "Edition", "value": "1/50"},
+    {"trait_type": "Dial Color", "value": "Azul Aurora"},
+    {"trait_type": "Edition", "value": "1/25"},
+    {"trait_type": "Power Reserve", "value": "N/A (Quartz)"},
     {"trait_type": "Serial Number", "value": "VR-AL-AA-01001"}
   ]
 }
@@ -99,7 +105,8 @@ Brand code:    VR = Vera Cruz
 │                    VeraCruzNFT.sol                          │
 ├─────────────────────────────────────────────────────────────┤
 │  Owner Functions (Vera Cruz):                                │
-│  ├── mintBatch(address to, uint256[] tokenIds, string[] serials, DialColor[] colors)  │
+│  ├── mintWatch(...) / mintBatch(arrays...)                 │
+│  ├── sellWatch(address buyer, uint256 tokenId, bool extended)│
 │  ├── startWarranty(uint256 tokenId, bool extended)          │
 │  ├── setBaseURI(string memory newBaseURI)                   │
 │  └── pause() / unpause()                                    │
@@ -107,15 +114,15 @@ Brand code:    VR = Vera Cruz
 │  NFT Owner Functions:                                       │
 │  ├── transferFrom(address from, address to, uint256 id)     │
 │  ├── safeTransferFrom(address from, address to, uint256 id) │
-│  └── setOwnerAlias(uint256 tokenId, string memory alias)    │
+│  └── setOwnerNickname(string memory nickname)              │
 ├─────────────────────────────────────────────────────────────┤
 │  Read-Only Query Functions:                                 │
 │  ├── getWatchData(uint256 tokenId) → WatchData              │
 │  ├── getOwnershipHistory(uint256 tokenId) → Transfer[]       │
-│  ├── getOwnerAlias(address owner) → string                  │
+│  ├── getOwnerNickname(address owner) → string               │
 │  ├── getWatchesByOwner(address owner) → uint256[]           │
 │  ├── totalSupply() → uint256                                │
-│  ├── getWatchesByDialColor(DialColor) → uint256[]           │
+│  ├── getWatchesByDialColor(uint256) → uint256[]             │
 │  ├── isUnderWarranty(uint256 tokenId) → bool                │
 │  ├── warrantyStartTime(uint256 tokenId) → uint256            │
 │  ├── warrantyType(uint256 tokenId) → bool                    │
@@ -130,25 +137,18 @@ Brand code:    VR = Vera Cruz
 ### 4.1 WatchData (struct)
 
 ```solidity
-enum DialColor { Black, AuroraBlue }
-
 struct WatchData {
-    string model;              // "Alvorada"
-    string brand;              // "Vera Cruz"
-    string caseMaterial;       // "316L Stainless Steel"
-    string caseDiameter;       // "40mm"
-    string crystalType;        // "Sapphire Crystal"
-    string movementType;       // "Quartz"
-    string caliber;            // "Miyota 2115"
-    string strap;              // "Solid Stainless Steel President Style"
-    string waterResistance;    // "5 ATM"
-    DialColor dialColor;       // Black (0) or AuroraBlue (1)
-    string serialNumber;       // "VR-AL-AA-01001"
-    uint256 edition;           // 1-25 (position within dial color batch)
+    string model;              // Model name, for example "Alvorada"
+    string modelCode;          // SKU model code, for example "AL"
+    string dialColor;          // Flexible code, for example "AA", "PR" or "VM"
+    string serialNumber;       // Physical serial number
+    string sku;                // Full product SKU
+    uint256 batchNumber;       // Production batch
+    uint256 edition;           // Piece number within the batch/color
     uint256 mintedAt;          // Block timestamp of minting
     bool warrantyActive;       // Is warranty currently active?
-    uint256 warrantyStart;     // When warranty was started (0 if not started)
-    bool extendedWarranty;     // True if extended warranty purchased
+    uint256 warrantyStart;     // When warranty was started
+    bool extendedWarranty;     // True if extended warranty was purchased
 }
 ```
 
@@ -199,9 +199,9 @@ sequenceDiagram
     participant B as Blockchain
     participant P as Potential Buyer
 
-    Note over V: 1. Mint all 50 NFTs at once
+    Note over V: 1. Mint the watches for the current batch
     
-    V->>C: mintBatch(all 50 recipients with serial numbers)
+    V->>C: mintBatch(batch data and individual metadata URIs)
     C->>B: Transactions created
     B->>C: All 50 NFTs minted
     Note over P: NFTs in Vera Cruz wallet, not yet "active"
@@ -285,12 +285,14 @@ sequenceDiagram
 
 | Function | Who can execute |
 |----------|----------------|
-| `mintBatch` | Only the contract owner (Vera Cruz) |
+| `mintWatch` / `mintBatch` | Only the contract owner (Vera Cruz) |
+| `sellWatch` | Contract owner; transfers a treasury NFT and activates warranty |
 | `startWarranty` | Only the contract owner (Vera Cruz) |
 | `setBaseURI` | Only the contract owner |
 | `pause` / `unpause` | Only the contract owner |
 | `transferFrom` | Current NFT owner (or approved) |
-| `setOwnerAlias` | Current NFT owner |
+| `setOwnerNickname` | Current NFT owner |
+| `setOwnerNicknameFor` | Only the contract owner; used to assist with buyer onboarding |
 | `isUnderWarranty` | Anyone (read-only) |
 | `getWatchData` | Anyone (read-only) |
 
@@ -302,6 +304,17 @@ sequenceDiagram
 - Events for auditing all operations
 - Zero address checks (0x0000...)
 
+### 7.3 Static Analysis Review
+
+Slither was run against the current implementation in `contracts/VeraCruzNFT.sol`, excluding dependencies, artifacts and cache. The analysis completed with the following accepted findings:
+
+| Finding | Assessment | Decision |
+|---------|------------|----------|
+| `timestamp` in warranty functions | `block.timestamp` is used to record minting, transfer and warranty start times and to calculate the warranty expiry. A block timestamp can be adjusted slightly by a validator, but this application uses periods of one or two years, so second-level precision is not a security boundary. | Accepted risk. Reassess if warranty rules become dependent on short time windows or exact timestamps. |
+| `costly-loop` in array `mintBatch` | Batch minting intentionally performs one mint and several storage updates per item. A sufficiently large batch can exceed the transaction gas limit. | Accepted design constraint. Keep batches sized for the target network and add a maximum batch size if operational testing shows gas-limit failures. |
+
+The boolean equality finding was fixed by using `!watchData[tokenId].warrantyActive` in `_startWarranty`. The remaining findings are documented rather than suppressed so future reviews can distinguish intentional design constraints from newly introduced warnings.
+
 ---
 
 ## 8. Events
@@ -310,9 +323,18 @@ sequenceDiagram
 event WatchMinted(
     uint256 indexed tokenId,
     address indexed to,
-    string serialNumber,
-    DialColor dialColor,
+    string sku,
+    string modelCode,
+    string dialColor,
+    uint256 batchNumber,
     uint256 edition
+);
+
+event WatchSold(
+    uint256 indexed tokenId,
+    address indexed from,
+    address indexed to,
+    bool extendedWarranty
 );
 
 event OwnershipTransferred(
@@ -346,7 +368,9 @@ event WarrantyExpired(
 
 ---
 
-## 9. Smart Contract Code Structure (Preview)
+## 9. Smart Contract Code Structure
+
+The deployed implementation is maintained in `contracts/VeraCruzNFT.sol`. The current contract uses ERC-721 with `Ownable`, `Pausable` and `ReentrancyGuard`; it stores identity and warranty data on-chain, and stores an individual IPFS metadata URI for each token. The legacy preview below is historical context only and is not an implementation specification.
 
 ```solidity
 // SPDX-License-Identifier: MIT
@@ -496,6 +520,12 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
 
 ## 10. Implementation Timeline
 
+### Current Testnet Deployment
+
+- Network: Polygon Amoy
+- Contract: `0x21fd55622967cAE5722113fa8F8b8d9664Be4924`
+- Explorer: https://amoy.polygonscan.com/address/0x21fd55622967cAE5722113fa8F8b8d9664Be4924
+
 ### Phase 1: Development
 - [ ] Create Hardhat/Foundry project structure
 - [ ] Implement `VeraCruzNFT.sol` contract with warranty features
@@ -503,15 +533,15 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
 - [ ] Create deployment script
 
 ### Phase 2: Preparation
-- [ ] Prepare images of all 50 watches (IPFS)
-- [ ] Prepare JSON metadata for each NFT
-- [ ] Configure IPFS via Pinata or use OpenSea
-- [ ] Test on testnet (Sepolia)
+- [x] Prepare images for the current collection (IPFS)
+- [x] Prepare JSON metadata for each NFT
+- [x] Configure IPFS via Pinata
+- [ ] Test the current contract on Polygon Amoy
 
 ### Phase 3: Deployment
 - [ ] Audit contract (pay special attention to warranty functions)
-- [ ] Deploy to mainnet
-- [ ] Mint all 50 NFTs
+- [ ] Deploy the audited contract to Polygon mainnet
+- [ ] Mint the planned watches in batches
 - [ ] Configure marketplace (OpenSea)
 - [ ] Set up warranty tracking dashboard (off-chain)
 
@@ -522,7 +552,7 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
 | Component | Technology |
 |-----------|------------|
 | Blockchain | Ethereum (L1) or Polygon (L2 cheaper) |
-| Testnet | Sepolia (Ethereum) or Mumbai (Polygon) |
+| Testnet | Polygon Amoy |
 | Framework | Hardhat or Foundry |
 | Library | OpenZeppelin Contracts |
 | Storage | IPFS via Pinata or OpenSea |
@@ -533,11 +563,11 @@ contract VeraCruzNFT is ERC721URIStorage, Ownable, Pausable, ReentrancyGuard {
 
 ## 12. Next Steps
 
-1. **Confirm this plan** - Review proposed architecture with warranty features
-2. **Choose blockchain** - Ethereum mainnet vs Polygon (cost vs speed consideration)
-3. **Implement code** - Switch to "Code" mode to write Solidity
-4. **Test** - Deploy to testnet, test warranty activation flow
-5. **Final deploy** - Mainnet
+1. Pin the corrected metadata folder in Pinata and record its root CID.
+2. Deploy the current contract to Polygon Amoy.
+3. Mint a small batch and verify each individual `tokenURI`.
+4. Test `sellWatch`, transfers and warranty queries on Amoy.
+5. Audit the final version before deploying to Polygon mainnet.
 
 ---
 

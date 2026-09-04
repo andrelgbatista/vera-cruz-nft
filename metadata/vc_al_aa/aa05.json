@@ -1,0 +1,88 @@
+{
+  "name": "Vera Cruz Alvorada Azul Aurora #5/25",
+  "description": "Vera Cruz Alvorada watch - Azul Aurora dial, 40mm, 316L Stainless Steel, Sapphire Crystal, Miyota 2115 Quartz movement. Serial: VR-AL-AA-01005",
+  "image": "ipfs://bafybeialqnbl4agtpqai6pwornzom5vnf2566ewa35btlmmlqp5ccbtn6e/aa05.jpg",
+  "external_url": "https://www.relogiosveracruz.com.br/",
+  "attributes": [
+    {
+      "trait_type": "Model",
+      "value": "Alvorada"
+    },
+    {
+      "trait_type": "Brand",
+      "value": "Vera Cruz"
+    },
+    {
+      "trait_type": "Case Material",
+      "value": "316L Stainless Steel"
+    },
+    {
+      "trait_type": "Case Color",
+      "value": "Prata"
+    },
+    {
+      "trait_type": "Case Diameter",
+      "value": "40mm"
+    },
+    {
+      "trait_type": "Crystal",
+      "value": "Sapphire Crystal"
+    },
+    {
+      "trait_type": "Bezel",
+      "value": "Sem bezel"
+    },
+    {
+      "trait_type": "Watch Style",
+      "value": "Tres ponteiros com data"
+    },
+    {
+      "trait_type": "Movement",
+      "value": "Quartz"
+    },
+    {
+      "trait_type": "Caliber",
+      "value": "Miyota 2115"
+    },
+    {
+      "trait_type": "Strap",
+      "value": "Solid Stainless Steel President Style"
+    },
+    {
+      "trait_type": "Strap Color",
+      "value": "Prata"
+    },
+    {
+      "trait_type": "Strap Material",
+      "value": "Aco"
+    },
+    {
+      "trait_type": "Strap Type",
+      "value": "President"
+    },
+    {
+      "trait_type": "Clasp",
+      "value": "Borboleta"
+    },
+    {
+      "trait_type": "Water Resistance",
+      "value": "5 ATM"
+    },
+    {
+      "trait_type": "Dial Color",
+      "value": "Azul Aurora"
+    },
+    {
+      "trait_type": "Edition",
+      "value": "5/25"
+    },
+    {
+      "trait_type": "Power Reserve",
+      "value": "N/A (Quartz)"
+    },
+    {
+      "trait_type": "Serial Number",
+      "value": "VR-AL-AA-01005"
+    }
+  ]
+}
